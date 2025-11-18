@@ -497,6 +497,8 @@ class LayoutBuilder {
 				this.processLeaf(node);
 			} else if (node.toc) {
 				this.processToc(node);
+			} else if (node._tocLeader) {
+				this.processTocLeader(node);
 			} else if (node.image) {
 				this.processImage(node);
 			} else if (node.svg) {
@@ -1108,6 +1110,39 @@ class LayoutBuilder {
 		if (node.toc._table) {
 			this.processNode(node.toc._table);
 		}
+	}
+
+	processTocLeader(node) {
+		let leader = node._tocLeader;
+		let text = leader.text || '.';
+		let style = leader.style || {};
+		let textRef = leader._textRef;
+
+		let styleStack = new StyleContextStack(this.docMeasure.styleDictionary, textRef.style);
+		styleStack.push(textRef.tocStyle || {});
+		styleStack.push(style);
+
+		let leaderData = this.docMeasure.textInlines.buildInlines([{ text: text, ...style }], styleStack);
+		let leaderWidth = leaderData.minWidth;
+		let availableWidth = this.writer.context().availableWidth;
+
+		if (availableWidth < leaderWidth || leaderWidth === 0) {
+			return;
+		}
+
+		let count = Math.floor(availableWidth / leaderWidth);
+		let leaderText = text.repeat(count);
+
+		let line = new Line(this.writer.context().availableWidth);
+
+		let inline = leaderData.items[0];
+		inline.text = leaderText;
+		inline.width = leaderWidth * count;
+		inline.noWrap = true;
+
+		line.addInline(inline);
+
+		node.positions.push(this.writer.addLine(line));
 	}
 
 	buildNextLine(textNode) {

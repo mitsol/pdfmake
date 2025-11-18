@@ -59,6 +59,20 @@ class DocMeasure {
 				return extendMargins(this.measureLeaf(node));
 			} else if (node.toc) {
 				return extendMargins(this.measureToc(node));
+			} else if (node._tocLeader) {
+				let leader = node._tocLeader;
+				let text = leader.text || '.';
+				let style = leader.style || {};
+				let textRef = leader._textRef;
+
+				let styleStack = new StyleContextStack(this.styleDictionary, textRef.style);
+				styleStack.push(textRef.tocStyle || {});
+				styleStack.push(style);
+
+				let leaderData = this.textInlines.buildInlines([{ text: text, ...style }], styleStack);
+				node._minWidth = leaderData.minWidth;
+				node._maxWidth = 10000; // a very large number
+				return node;
 			} else if (node.image) {
 				return extendMargins(this.measureImage(node));
 			} else if (node.svg) {
@@ -196,16 +210,38 @@ class DocMeasure {
 				let lineMargin = item._textNodeRef.tocMargin || textMargin;
 				let lineNumberStyle = item._textNodeRef.tocNumberStyle || numberStyle;
 				let destination = getNodeId(item._nodeRef);
-				body.push([
-					{ text: item._textNodeRef.text, linkToDestination: destination, alignment: 'left', style: lineStyle, margin: lineMargin },
-					{ text: '00000', linkToDestination: destination, alignment: 'right', _tocItemRef: item._nodeRef, style: lineNumberStyle, margin: [0, lineMargin[1], 0, lineMargin[3]] }
-				]);
+				let line = [
+					{ text: item._textNodeRef.text, linkToDestination: destination, alignment: 'left', style: lineStyle, margin: lineMargin }
+				];
+
+				if (node.toc.leader) {
+					line.push({
+						_tocLeader: {
+							text: node.toc.leader.text || '.',
+							style: node.toc.leader.style,
+							_textRef: item._textNodeRef
+						}
+					});
+				}
+
+				line.push({ text: '00000', linkToDestination: destination, alignment: 'right', _tocItemRef: item._nodeRef, style: lineNumberStyle, margin: [0, lineMargin[1], 0, lineMargin[3]] });
+
+				body.push(line);
 			}
+
+			let widths = ['auto', '*', 'auto'];
+			if (!node.toc.leader) {
+				widths = ['*', 'auto'];
+				for (let i = 0, l = body.length; i < l; i++) {
+					body[i].splice(1, 1);
+				}
+			}
+
 
 			node.toc._table = {
 				table: {
 					dontBreakRows: true,
-					widths: ['*', 'auto'],
+					widths: widths,
 					body: body
 				},
 				layout: 'noBorders'
