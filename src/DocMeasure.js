@@ -59,20 +59,6 @@ class DocMeasure {
 				return extendMargins(this.measureLeaf(node));
 			} else if (node.toc) {
 				return extendMargins(this.measureToc(node));
-			} else if (node._tocLeader) {
-				let leader = node._tocLeader;
-				let text = leader.text || '.';
-				let style = leader.style || {};
-				let textRef = leader._textRef;
-
-				let styleStack = new StyleContextStack(this.styleDictionary, textRef.style);
-				styleStack.push(textRef.tocStyle || {});
-				styleStack.push(style);
-
-				let leaderData = this.textInlines.buildInlines([{ text: text, ...style }], styleStack);
-				node._minWidth = leaderData.minWidth;
-				node._maxWidth = 10000; // a very large number
-				return node;
 			} else if (node.image) {
 				return extendMargins(this.measureImage(node));
 			} else if (node.svg) {
@@ -191,7 +177,37 @@ class DocMeasure {
 		node._minWidth = data.minWidth;
 		node._maxWidth = data.maxWidth;
 
+		if (node._tocLeader) {
+			node._tocLeaderInline = this.measureTocLeaderInline(node._tocLeader, styleStack);
+		}
+
 		return node;
+	}
+
+	// builds a single, fully measured repetition of the TOC leader (e.g. ' . '),
+	// used by LayoutBuilder to fill the last line of a TOC entry up to the page number
+	measureTocLeaderInline(leader, styleStack) {
+		let leaderText = isString(leader.text) ? leader.text : '.';
+		let leaderStyleStack = styleStack.clone();
+		if (leader.style) {
+			leaderStyleStack.push(leader.style);
+		}
+
+		let items = this.textInlines.buildInlines(leaderText, leaderStyleStack).items;
+		if (items.length === 0) {
+			return null;
+		}
+
+		// the text may have been split into several inlines; collapse it back into
+		// one repeatable unit measured as a whole (including any spaces)
+		let inline = items[0];
+		inline.text = leaderText;
+		inline.width = this.textInlines.widthOfText(leaderText, inline);
+		inline.leadingCut = 0;
+		inline.trailingCut = 0;
+		delete inline.lineEnd;
+
+		return inline.width > 0 ? inline : null;
 	}
 
 	measureToc(node) {
@@ -210,38 +226,22 @@ class DocMeasure {
 				let lineMargin = item._textNodeRef.tocMargin || textMargin;
 				let lineNumberStyle = item._textNodeRef.tocNumberStyle || numberStyle;
 				let destination = getNodeId(item._nodeRef);
-				let line = [
-					{ text: item._textNodeRef.text, linkToDestination: destination, alignment: 'left', style: lineStyle, margin: lineMargin }
-				];
 
+				let textCell = { text: item._textNodeRef.text, linkToDestination: destination, alignment: 'left', style: lineStyle, margin: lineMargin };
 				if (node.toc.leader) {
-					line.push({
-						_tocLeader: {
-							text: node.toc.leader.text || '.',
-							style: node.toc.leader.style,
-							_textRef: item._textNodeRef
-						}
-					});
+					textCell._tocLeader = node.toc.leader;
 				}
 
-				line.push({ text: '00000', linkToDestination: destination, alignment: 'right', _tocItemRef: item._nodeRef, style: lineNumberStyle, margin: [0, lineMargin[1], 0, lineMargin[3]] });
-
-				body.push(line);
+				body.push([
+					textCell,
+					{ text: '00000', linkToDestination: destination, alignment: 'right', _tocItemRef: item._nodeRef, style: lineNumberStyle, margin: [0, lineMargin[1], 0, lineMargin[3]] }
+				]);
 			}
-
-			let widths = ['auto', '*', 'auto'];
-			if (!node.toc.leader) {
-				widths = ['*', 'auto'];
-				for (let i = 0, l = body.length; i < l; i++) {
-					body[i].splice(1, 1);
-				}
-			}
-
 
 			node.toc._table = {
 				table: {
 					dontBreakRows: true,
-					widths: widths,
+					widths: ['*', 'auto'],
 					body: body
 				},
 				layout: 'noBorders'
