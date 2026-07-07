@@ -177,7 +177,37 @@ class DocMeasure {
 		node._minWidth = data.minWidth;
 		node._maxWidth = data.maxWidth;
 
+		if (node._tocLeader) {
+			node._tocLeaderInline = this.measureTocLeaderInline(node._tocLeader, styleStack);
+		}
+
 		return node;
+	}
+
+	// builds a single, fully measured repetition of the TOC leader (e.g. ' . '),
+	// used by LayoutBuilder to fill the last line of a TOC entry up to the page number
+	measureTocLeaderInline(leader, styleStack) {
+		let leaderText = isString(leader.text) ? leader.text : '.';
+		let leaderStyleStack = styleStack.clone();
+		if (leader.style) {
+			leaderStyleStack.push(leader.style);
+		}
+
+		let items = this.textInlines.buildInlines(leaderText, leaderStyleStack).items;
+		if (items.length === 0) {
+			return null;
+		}
+
+		// the text may have been split into several inlines; collapse it back into
+		// one repeatable unit measured as a whole (including any spaces)
+		let inline = items[0];
+		inline.text = leaderText;
+		inline.width = this.textInlines.widthOfText(leaderText, inline);
+		inline.leadingCut = 0;
+		inline.trailingCut = 0;
+		delete inline.lineEnd;
+
+		return inline.width > 0 ? inline : null;
 	}
 
 	measureToc(node) {
@@ -196,8 +226,14 @@ class DocMeasure {
 				let lineMargin = item._textNodeRef.tocMargin || textMargin;
 				let lineNumberStyle = item._textNodeRef.tocNumberStyle || numberStyle;
 				let destination = getNodeId(item._nodeRef);
+
+				let textCell = { text: item._textNodeRef.text, linkToDestination: destination, alignment: 'left', style: lineStyle, margin: lineMargin };
+				if (node.toc.leader) {
+					textCell._tocLeader = node.toc.leader;
+				}
+
 				body.push([
-					{ text: item._textNodeRef.text, linkToDestination: destination, alignment: 'left', style: lineStyle, margin: lineMargin },
+					textCell,
 					{ text: '00000', linkToDestination: destination, alignment: 'right', _tocItemRef: item._nodeRef, style: lineNumberStyle, margin: [0, lineMargin[1], 0, lineMargin[3]] }
 				]);
 			}

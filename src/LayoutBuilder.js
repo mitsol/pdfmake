@@ -1180,6 +1180,31 @@ class LayoutBuilder {
 
 		line.lastLineInParagraph = textNode._inlines.length === 0;
 
+		// fill the rest of the last line of a TOC entry with its leader (e.g. ' . . . ')
+		// so the dots run from the end of the headline towards the page number
+		if (line.lastLineInParagraph && textNode._tocLeaderInline) {
+			let leader = textNode._tocLeaderInline;
+			let remainingWidth = line.maxWidth - (line.inlineWidths - line.leadingCut);
+
+			if (remainingWidth >= leader.width) {
+				let count = Math.floor(remainingWidth / leader.width);
+				let leaderText = leader.text.repeat(count);
+				let leaderWidth = textInlines.widthOfText(leaderText, leader);
+				while (count > 1 && leaderWidth > remainingWidth) {
+					count--;
+					leaderText = leader.text.repeat(count);
+					leaderWidth = textInlines.widthOfText(leaderText, leader);
+				}
+
+				if (leaderWidth <= remainingWidth) {
+					let inline = cloneInline(leader);
+					inline.text = leaderText;
+					inline.width = leaderWidth;
+					line.addInline(inline);
+				}
+			}
+		}
+
 		return line;
 	}
 
